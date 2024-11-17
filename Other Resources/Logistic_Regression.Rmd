@@ -1,0 +1,127 @@
+---
+title: "Logistic Regression"
+author: "Marissa Robinson"
+date: "2023-10-15"
+output: html_document
+---
+
+
+
+## Loading the Data
+
+
+```{r}
+library(readr)
+library(here)
+
+mydata <- read.csv(here("Data", "Glassdoor Gender Pay Gap w_o outliers.csv"))
+
+head(mydata)
+```
+
+## Checking Regression Assumptions
+Please note that I will be using Gender as the dependent variable not income. Given that loistic regression is intended to be used, here are the asusmptions that will be checked:
+
+- Linearity in the Logit: The relationship between the logit of the dependent variable and each predictor is linear.
+- No Multicollinearity: Among predictors.
+
+
+```{r echo=FALSE}
+# 1. Check if `Gender` has only two levels:
+table(mydata$Gender)
+
+# 2. Convert `Gender` into Numeric Form:
+mydata$GenderNumeric <- ifelse(mydata$Gender == "Female", 0, 1)
+
+# 3. Calculate Logit:
+mydata$GenderAdjusted <- ifelse(mydata$GenderNumeric == 0, 0.01, 
+                                ifelse(mydata$GenderNumeric == 1, 0.99, mydata$GenderNumeric))
+mydata$GenderLogit <- log(mydata$GenderAdjusted / (1 - mydata$GenderAdjusted))
+
+library(ggplot2)
+
+# 1. Check Linearity in the Logit for Age:
+ggplot(mydata, aes(x=Age, y=GenderLogit)) + 
+  geom_point(alpha=0.5) +
+  geom_smooth(se=FALSE) +
+  ggtitle("Linearity Check for Age")
+
+# 2. Check Linearity in the Logit for PerfEval:
+ggplot(mydata, aes(x=PerfEval, y=GenderLogit)) + 
+  geom_point(alpha=0.5) +
+  geom_smooth(se=FALSE) +
+  ggtitle("Linearity Check for PerfEval")
+
+# 3. Check Linearity in the Logit for Seniority:
+ggplot(mydata, aes(x=Seniority, y=GenderLogit)) + 
+  geom_point(alpha=0.5) +
+  geom_smooth(se=FALSE) +
+  ggtitle("Linearity Check for Seniority")
+
+# 4. Check Linearity in the Logit for BasePay:
+ggplot(mydata, aes(x=BasePay, y=GenderLogit)) + 
+  geom_point(alpha=0.5) +
+  geom_smooth(se=FALSE) +
+  ggtitle("Linearity Check for BasePay")
+
+# 5. Check Linearity in the Logit for Bonus:
+ggplot(mydata, aes(x=Bonus, y=GenderLogit)) + 
+  geom_point(alpha=0.5) +
+  geom_smooth(se=FALSE) +
+  ggtitle("Linearity Check for Bonus")
+
+# 2. Check for multicollinearity using Variance Inflation Factor (VIF):
+
+# Let's use Age, PerfEval, Seniority, and BasePay as predictors. Adjust this based on your final model or other predictors you want to include.
+model_for_vif <- lm(GenderNumeric ~ Age + PerfEval + Seniority + BasePay, data=mydata)
+vif_values <- car::vif(model_for_vif)
+print(vif_values)
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+The linearity plots visually assessed the relationship between the log odds of the dependent variable (Gender) and each continuous predictor. Only the "BasePay" predictor passed the linearity assumption
+
+
+Generally, a VIF above 5-10 suggests a problematic amount of collinearity. From the provided VIF numbers, none of the predictors have a VIF value above this threshold, indicating that multicollinearity is likely not an issue in this dataset. Specifically, the highest VIF is for BasePay at 2.427392, which is still well below common thresholds of concern. The other predictors, including Age, PerfEval, and Seniority, also have VIF values considerably lower than 5, further supporting the lack of multicollinearity in the model.
+
+## Logistic Regression on BasePay
+
+```{r}
+# Using the glm function to perform logistic regression
+model <- glm(GenderNumeric ~ BasePay, 
+             data=mydata, family="binomial")
+
+# Summary of the model
+summary(model)
+```
+In the logistic regression analysis, the dependent variable, GenderNumeric, was predicted using the variable BasePay. The coefficient for BasePay is approximately 1.328×10 −5, which signifies that for every unit increase in BasePay, the log odds of being categorized as '1' in the GenderNumeric variable increase by this small magnitude. This relationship is statistically significant with a p-value less than 0.05, as indicated by the value of 4.62×10 −7. Moreover, the model's goodness of fit, reflected by the deviance statistics, suggests that the inclusion of BasePay offers a modest improvement in fit compared to a null model. However, while this model captures an association between pay and gender, it does not suggest a causal relationship.
+
+
+## Model Validation 
+
+```{r echo=FALSE}
+library(pROC)
+
+# Predict probabilities for the test data (assuming you used the same data for training and testing)
+predicted_probs <- predict(model, type = "response")
+
+# Use 0.5 as the threshold for classification
+predicted_class <- ifelse(predicted_probs > 0.5, 1, 0)
+
+# Confusion matrix
+conf_matrix <- table(Predicted = predicted_class, Actual = mydata$GenderNumeric)
+print(conf_matrix)
+
+# Calculate and plot ROC curve
+roc_obj <- roc(mydata$GenderNumeric, predicted_probs)
+plot(roc_obj, main="ROC Curve", col="blue")
+
+# Calculate AUC
+auc(roc_obj)
+```
+
+In evaluating the predictive capability of the logistic regression model on gender based on BasePay, the confusion matrix provides key insights into the model's classification performance. Out of the females (coded as 0), 194 were correctly classified (true negatives), while 274 were incorrectly classified as males (false positives). On the other hand, out of the males (coded as 1), 367 were accurately predicted (true positives), and 162 were mistakenly predicted as females (false negatives). The Area Under the Curve (AUC) value, a performance metric for the model's discriminative power, is 0.588. An AUC value of 0.5 indicates a model with no discriminative capability (akin to random guessing), while a value of 1.0 signifies perfect discriminative power. The observed AUC of 0.588 suggests that the model possesses a modest ability to distinguish between genders based on BasePay, but there's significant room for improvement.
+
+# Comments by Marissa
+I know we said we were not going to create new variables, but I think we should discuss doing so. Possibly interaction terms or new variables in general. 

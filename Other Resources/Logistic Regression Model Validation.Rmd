@@ -1,0 +1,50 @@
+---
+title: "Logistic Regression Model Validation"
+output: html_document
+date: "2023-11-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1. Cross - Validation:
+```{r}
+library(boot)
+
+# Logistic Model
+cv_results <- cv.glm(data, logistic_model, K = 10)  # 10-fold cross-validation
+print(cv_results)
+
+# Interaction Model
+cv_results_2 <- cv.glm(data, logistic_interaction_model, K = 10)  # 10-fold cross-validation
+print(cv_results_2)
+
+```
+
+Two delta values are found for the logistic model: 0.09246339 0.09206775. For the interaction model: 0.09534866 0.09450217. Both are performing better in terms of deviance reduction due to low delta value. 
+
+2. ROC Curve
+```{r}
+library(pROC)
+roc_curve <- roc(data$HighSalary, predicted_probs)
+auc_value <- auc(roc_curve)
+plot(roc_curve, main = paste("ROC Curve (AUC =", round(auc_value, 2), ")"))
+```
+
+An AUC of 0.96 indicates that the model is making accurate predictions and has a high level of sensitivity and specificity.
+
+3. Residual Analysis
+```{r}
+residuals <- residuals(logistic_model, type = "response")
+
+# Residuals vs. predicted values
+plot(predicted_probs, residuals, xlab = "Predicted Probabilities", ylab = "Residuals")
+
+# Residuals vs. predictor variable (replace 'Age' with your predictor variable)
+plot(data$Age, residuals, xlab = "Age", ylab = "Residuals")
+
+```
+
+Residuals are distributed symmetrically around zero. Positive residuals and negative residuals are balanced.The residuals generally cluster around zero. 

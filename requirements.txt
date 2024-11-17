@@ -1,0 +1,8 @@
+R>=4.3.1
+
+ggplot2
+dplyr
+here
+reshape2
+knitr
+rmarkdown

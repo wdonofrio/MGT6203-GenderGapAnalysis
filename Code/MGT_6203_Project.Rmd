@@ -1,0 +1,452 @@
+---
+title: "MGT 6203 Project - Team 26"
+output: html_document
+date: "2023 Fall Semester"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intsall and Load Libraries
+
+```{r include=FALSE}
+# create list of needed packages
+packages = c('ggplot2', 'dplyr', 'here', 'reshape2')
+
+# install packages if needed
+for (package in packages) {
+  if (!package %in% installed.packages()) {
+    install.packages(package)
+  }
+}
+
+```
+
+```{r echo=TRUE}
+for (package in packages) {
+  library(package, character.only = TRUE)
+}
+
+```
+
+# Establish Branding
+```{r}
+# Set colors to use in subsequent visuals
+gtblue = rgb(0, 48, 87, maxColorValue = 255)
+techgold = rgb(179, 163, 105, maxColorValue = 255)
+buzzgold = rgb(234, 170, 0, maxColorValue = 255)
+bobbyjones = rgb(55, 113, 23, maxColorValue = 255)
+
+```
+
+# Exploratory Data Analysis
+Reading Data and getting summary statistics
+```{r read data, echo=TRUE}
+# read in the data
+data <- read.csv(here("Data","Glassdoor Gender Pay Gap.csv"))
+summary(data)
+
+#Creating a new variable call salary
+data$Salary <- data$BasePay + data$Bonus
+
+#Checking for missing value
+missing <- sapply(data,function(x)
+  sum(is.na(x)))
+
+
+rows_with_missing_data <- which(apply(data, 1, function(row) any(is.na(row))))
+
+# Displaying rows with missing data
+if (length(rows_with_missing_data) > 0) {
+  cat("Rows with missing data:", rows_with_missing_data, "\n")
+  print(data[rows_with_missing_data, ])
+} else {
+  cat("No rows with missing data found.\n")
+}
+
+
+```
+
+# Exploratory Data Analysis
+```{r EDA, echo=FALSE}
+#Histogram with salary distribution
+ggplot(data, aes(x = Salary)) +
+  geom_histogram(binwidth = 5000, fill = gtblue, color = techgold) +
+  scale_x_continuous(breaks = seq(0, 200000, by = 20000)) +  # Increment by 20,000
+  labs(title = "Salary Distribution with Density Curve", x = "Salary", y = "Frequency")
+
+# Select all columns except 'Salary'
+variables_to_plot <- c("Age", "Gender", "JobTitle", "Dept")
+
+#Storing plots
+plots <- list()
+
+# Loop through variables and create appropriate plots
+for (variable in variables_to_plot) {
+  if (is.numeric(data[[variable]])) {
+    # Continuous variable, create a histogram
+    plots[[variable]] <- ggplot(data, aes(x = !!sym(variable))) +
+      geom_histogram(binwidth = 5, fill = gtblue, color = techgold) +
+      labs(title = paste("Distribution of", variable))
+  } else {
+    # Categorical variable, create a bar plot
+    plots[[variable]] <- ggplot(data, aes(x = !!sym(variable))) +
+      geom_bar(fill = gtblue) +
+      labs(title = paste("Distribution of", variable)) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Adjust text angle and alignment
+  }
+  
+  # Check if x-axis labels are too long
+  max_label_length <- max(nchar(as.character(data[[variable]])))
+  if (max_label_length > 10) {
+    # If labels are too long, adjust text size
+    plots[[variable]] <- plots[[variable]] + theme(axis.text.x = element_text(size = 8))
+  }
+  
+  # Print the plot
+  print(plots[[variable]])
+}
+
+ggplot(data, aes(x = Seniority)) +
+  geom_histogram(binwidth = 1, fill = gtblue, color = techgold) +
+  labs(title = "Histogram of Seniority", x = "Seniority", y = "Frequency")
+ggplot(data, aes(x = PerfEval)) +
+  geom_histogram(binwidth = 1, fill = gtblue, color = techgold) +
+  labs(title = "Histogram of Performance Evaluation", x = "Performance Evaluation", y = "Frequency")
+ggplot(data, aes(x = Gender, y = Salary)) +
+  geom_boxplot(fill = gtblue) +
+  labs(title = "Salary Comparison by Gender", x = "Gender", y = "Salary")
+
+```
+
+# Potential Outlier Identification: IQR Method
+```{r outlier Identification, echo=TRUE}
+Q1 <- quantile(data$Salary, 0.25, na.rm=TRUE)
+Q3 <- quantile(data$Salary, 0.75, na.rm=TRUE)
+IQR <- Q3 - Q1
+
+#Defining the lower and upper bounds for outliers
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+
+outliers <- which(data$Salary < lower_bound | data$Salary > upper_bound)
+
+# Displaying the outliers
+if (length(outliers) > 0) {
+  cat("Potential outliers are present in the following rows:", outliers, "\n")
+  print(data[outliers, ])
+} else {
+  cat("No outliers found.\n")
+}
+```
+
+```{r echo=FALSE}
+#Boxplot of Salary
+ggplot(data, aes(y = Salary)) +
+  geom_boxplot(fill = gtblue, color = techgold) +
+  labs(title = "Salary Box Plot")
+```
+
+```{r, echo = FALSE}
+#In the event we want to exclude outlier, see data below
+data_without_outliers <- data[-outliers, ]
+
+#New dataframe with data without outliers
+data_no_outlier <- data.frame(data_without_outliers)
+
+```
+
+```{r outlier Identification female, echo=TRUE}
+#Creating a criteria based on values identified from the outliers above
+criteria <- data.frame(
+  JobTitle = c("Manager", "IT", "Manager"),
+  Gender = c("Female", "Female", "Female"),  # Change gender to "Female" so that we can analyze the salary discrepancy for females with the same criteria
+  Age = c(59, 65, 58),
+  PerfEval = c(4, 4, 1),
+  Education = c("PhD", "Masters", "PhD"),
+  Dept = c("Sales", "Sales", "Management"),
+  Seniority = c(5, 5, 4)
+)
+
+#Empty dataframe to store the matching female employees
+matching_females_crit <- data.frame()
+
+#Loop to iterate through each criteria from the criteria dataframe and store result in matching_females_crit dataframe
+for (i in 1:nrow(criteria)) {
+  current_criteria <- criteria[i, ]
+
+  # Filter data based on criteria
+  matching_females <- data %>%
+    filter(
+      Gender == factor(current_criteria$Gender, levels = levels(data$Gender)),
+      JobTitle == factor(current_criteria$JobTitle, levels = levels(data$JobTitle)),
+      Education == factor(current_criteria$Education, levels = levels(data$Education)),
+      Dept == factor(current_criteria$Dept, levels = levels(data$Dept))
+    )
+  
+  #Updating new dataframe
+  matching_females_crit <- rbind(matching_females_crit, matching_females)
+}
+
+matching_females_crit
+
+```
+
+There are no females with matching attributes to the potential male outliers defined earlier above. Although these salary amounts may be high based on the IQR method, careful consideration needs to be taken before excluding them entirely from the analysis.
+
+# Hypothesis 1: Multiple Linear Regression with Gender Interaction Terms
+
+```{r fit MLR, echo=FALSE}
+# Fit the model
+model1 <- lm(Salary ~ PerfEval + Education + Seniority + Gender + PerfEval:Gender + Education:Gender + Seniority:Gender, data = data)
+summary(model1)
+
+```
+
+# Model Interpretation
+Individual Predictors\
+
+From the model above, we can draw the following key conclusions. First, the model coefficients for EdcuationPhD, Seniority, and GenderMale are all statistically significant at the the 0.01 alpha level or better (after accounting for the other variables in the model). This indicates a strong likelihood that these model coefficients do not equal zero, and thus are significant predictors of salary. The (Intercept) is also statistically significant at the 0.01 alpha level as well. Not only are the predicting variables significant, they also have the largest coefficients in the model (aside from the intercept). Take EducationPhD with a model coefficient of 10,105; this means that the average salary of an employee is expected to be ~10,105 dollars higher if an employee has a PhD. Seniority has a slighter higher model coefficient ~10,144 and has a slightly different interpretation. It is interpreted as follows: for a 1 unit increase in Seniority, which ranges from 1-5 (low to high), an employee's expected salary is expected to increase by 10,144 dollars. Lastly, GenderMale's model coefficient is 13,784 dollars and represents the expected increase in average salary for an employee who is male. Restated, this coefficient is a measurement of the gender pay gap, after accounting for PerfEval, Education, and Seniority.\
+\
+With respect to the variable EducationMasters, there is moderate positive evidence that earning a masters degree increases an employee's average expected salary. This coefficient is statistically significant at the alpha = 0.8 level a.k.a. the 92% confidence level with a value of ~4,830. While this coefficient is not quite as large as nor as statistically significant as those of EdcuationPhD, Seniority, and GenderMale, we still have a good degree of confidence that this is also a statistically significant predictor of an employee's average salary (after accounting for the other variables in the model).\
+\
+As for the individual predictors PerfEval and EducationHighSchool, these model coefficients have quite large p-values (0.8 or greater). As a result, we can't rule out the possibility that these model coefficients are not different from zero. However, this is not to say that higher PerfEval scores or graduating from high school has no true impact on salary at all. Intuitively, one would expect at least some (marginal) positive impact on salary for those who do well on a performance review and some negative impact on salary for those who don't pursue higher education after high school (in comparison with those who do). But given the other variables in the model, EducationHighSchool and PerfEval do not have as significant of an impact on salary as the other predictors.\
+\
+Interaction Terms\
+\
+In the model, we also included some interaction terms. The two interaction terms with the lowest p-values are EducationPhD:GenderMale and Seniority:GenderMale (~0.16 and ~0.23 respectively). These model coefficients are roughly -5,324 and -1,130 dollars, respectively. While lower p-values for these terms would be preferable, they still point towards a moderate association with a negative impact on the average male salary (holding all other factors constant). In other words, males with PhDs tend to make -5,324 dollars less than females with the same degree, and for each additional level of seniority, males make -1,130 dollars less than females. These coefficients suggest that EducationPhD and Seniority are moderators of the gender pay gap for women.\
+\
+For the remaining interaction terms PerfEval:GenderMale, EducationHigh School:GenderMale, and EducationMasters:GenderMale, these all have quite large p-values (~0.4 or greater), again indicating that these model coefficients aren't statistically significant or different from zero. PerfEval:GenderMale suggests a weak and marginal increase of 165 dollars per unit of PerfEval for males over females, which is marginal in comparison with other model coefficients. EducationMasters:GenderMale has a slightly negative coefficient value of roughly -443 dollars, followed by an even more negative coefficient for EducationHigh School:GenderMale of -2,956 dollars. Despite not achieving high statistical significance, these two model coefficients (EducationMasters:GenderMale and EducationHigh School:GenderMale) point towards the notion that education acts a moderator of the gender pay gap. However, the effect is much more significant for achieving higher levels of education versus lower levels of education.\
+\
+Model Significance & Explained Variation of Salary\
+\
+Overall, the model has statistically significant predictive power due to the large F-statistic and corresponding low p-value. This model allowed us to explore the relationship between each individual predictor (PerfEval, Education, Seniority, Gender, and the interaction of each term with Gender) and Salary. It has an r-squared value of roughly 0.34 suggesting that the model explains 34% of the variation in salary based on the predictors included in the model. 
+
+
+```{r}
+# set high school as base level for factor
+data$Education = factor(data$Education, levels = c('High School', 'College', 'Masters', 'PhD'))
+ 
+# Interaction Plot for Performance Evaluation and Gender
+plot_interaction1 <- ggplot(data, aes(x = PerfEval, y = Salary, color = Gender)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Salary vs. Performance Evaluation by Gender", x = "Performance Evaluation", y = "Salary")
+ 
+plot_interaction1
+ggsave(here("Visualizations", "Salary vs. Performance Evaluation by Gender.png"), plot_interaction1, dpi = 300)
+
+# Interaction Plot for Education Level and Gender
+# Education is a categorical variable and Gender is a factor
+plot_interaction2 <- ggplot(data, aes(x = Education, y = Salary, fill = Gender)) +
+  geom_bar(stat = "summary", fun = "mean", position = position_dodge()) +
+  scale_fill_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Average Salary by Education Level and Gender", x = "Education Level", y = "Average Salary") +
+  theme_minimal()
+ 
+plot_interaction2
+ggsave(here("Visualizations", "Average Salary by Education Level and Gender.png"), plot_interaction2, dpi = 300)
+
+# Interaction Plot for Seniority and Gender
+plot_interaction3 <- ggplot(data, aes(x = Seniority, y = Salary, color = Gender)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Salary vs. Seniority by Gender", x = "Seniority", y = "Salary")
+
+plot_interaction3
+ggsave(here("Visualizations", "Salary vs. Seniority by Gender.png"), plot_interaction3, dpi = 300)
+
+
+```
+
+# Hypothesis 2: Gender Disparities by Dept & JobTitle - ANOVA 
+
+```{r fit anova}
+# Fitting an ANOVA model
+anova_model <- aov(Salary ~ Dept:JobTitle:Gender, data = data)
+summary(anova_model)
+
+# get tukey pairwise avg comparisons
+thsd_res = TukeyHSD(anova_model)
+
+# store as a df
+tukey_df = as.data.frame(thsd_res$`Dept:JobTitle:Gender`)
+
+# add comparison col
+tukey_df$comparison = row.names(tukey_df)
+split_comparison = strsplit(as.character(tukey_df$comparison), '[:-]')
+#head(split_comparison)
+
+# convert split comp to df
+comparison_df <- do.call(rbind, lapply(split_comparison, function(x) {
+  data.frame(Dept1 = x[1], JobTitle1 = x[2], Gender1 = x[3], Dept2 = x[4], JobTitle2 = x[5], Gender2 = x[6], stringsAsFactors = FALSE)
+}))
+
+#head(comparison_df)
+
+# add new cols to main df
+tukey_df = cbind(tukey_df, comparison_df)
+#head(tukey_df)
+
+# identify pairings with signifiant diffs in the means
+#head(tukey_df[order(tukey_df$`p adj`), ])
+
+# filter df to only rows with same dept & job title but diff genders
+filtered_tukey_df = tukey_df[tukey_df$Dept1 == tukey_df$Dept2 & tukey_df$JobTitle1 == tukey_df$JobTitle2 & tukey_df$Gender1 != tukey_df$Gender2, ]
+filtered_tukey_df2 = filtered_tukey_df[order(filtered_tukey_df$`p adj`), ]
+#head(filtered_tukey_df2)
+
+# check for any pairings that meet the alpha = 0.1 threshold
+subset(filtered_tukey_df2, filtered_tukey_df2$'p adj' <= 0.1)
+
+```
+
+# ANOVA Model and TukeyHSD Interpretation
+
+Above, we performed an analysis of variance (ANOVA) on the interaction between Dept, JobTitle, and Gender. Per the large F-statistic and low p-value, this model detected a significant different between means for at least one of the Dept:JobTitle:Gender pairings. Then we used TukeyHSD to analyze the pairwise comparisons of all the various combinations of Dept, JobTitle, and Gender, and compare the differences between their means. However, upon filtering on like Dept and JobTitle with only differences in gender, this model detected no significant difference in the average salary between genders. All of these pairwise comparisons had high p-values close to one, which means we cannot reject the null hypothesis that there is no difference between these means. Restated, male and female average salaries are not statistically different from each other given the same Dept and JobTitle. 
+
+These findings contradict our results from the MLR model above which had a positive and statistically significant measurement of the gender pay gap (see model coefficient GenderMale). However, it is important to note that both of these models included different subsets of predictors. This stems from the different purpose or research question each model was built to answer. The ANOVA model was built to answer the question, based only on Dept and JobTitle, do we observe any statistically significant gender pay differences? The MLR model was built to answer two questions. First, are Seniority, PerfEval, Education, Gender, and the interaction between the first three terms and Gender significant predictors of Salary? Second, is there a measurable difference between male and female salaries after controlling for these variables? These contradicting findings highlight the complexity of the gender pay gap issue as it is a multifaceted. There are many different angles from which we can look at and analyze this problem.
+
+ 
+```{r}
+# Grouped Bar Chart for Average Salary by Department, Job Title, and Gender
+plot_bar_group1 <- ggplot(data, aes(x = Dept, y = Salary, fill = Gender)) +
+  geom_bar(stat = "summary", fun = "mean", position = position_dodge()) +
+  facet_wrap(~JobTitle, scales = "free_x") +
+  scale_fill_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Average Salary by Department and Job Title, Separated by Gender",
+       x = "Department", y = "Average Salary") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Box Plot for Salary by Department, Job Title, and Gender
+plot_bar_group2 <- ggplot(data, aes(x = Dept, y = Salary, fill = Gender)) +
+  geom_boxplot(position = position_dodge(0.8)) +
+  facet_wrap(~JobTitle, scales = "free_x") +
+  scale_fill_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Salary Distribution by Department and Job Title, Separated by Gender",
+       x = "Department", y = "Salary") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_bar_group1
+plot_bar_group2
+
+#The y-axis of the save images are not squished together
+ggsave(here("Visualizations", "Average Salary by Department and Job Title, Separated by Gender.png"), plot_bar_group1, width = 10, height = 10, dpi = 300)
+ggsave(here("Visualizations", "Salary Distribution by Department and Job Title, Separated by Gender.png"), plot_bar_group2, width = 10, height = 10, dpi = 300)
+
+
+```
+
+## Gender Breakdown by Role & Department
+```{r}
+
+plot_gender_job <- ggplot(data, aes(x = JobTitle, fill = Gender)) +
+geom_bar(position = "dodge", stat = "count", width = 0.7) +
+facet_wrap(~Dept, scales = "free_x") +
+scale_fill_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+xlab("Job Title") +
+ylab("Count") +
+ggtitle(paste0("Gender Breakdown by JobTitle")) +
+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+plot_gender_job
+
+ggsave(here("Visualizations", "Gender Breakdown by JobTitle.png"), plot_gender_job, width = 10, height = 10, dpi = 300)
+
+```
+
+```{r}
+plot_gender_dep <- ggplot(data, aes(x = Dept, fill = Gender)) +
+geom_bar(position = "dodge", stat = "count", width = 0.7) +
+facet_wrap(~JobTitle, scales = "free_x") +
+scale_fill_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+xlab("Dept") +
+ylab("Count") +
+ggtitle(paste0("Gender Breakdown by Department")) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_gender_dep
+
+ggsave(here("Visualizations", "Gender Breakdown by Department.png"), plot_gender_dep, width = 10, height = 10, dpi = 300)
+```
+
+Adding to the complexity, the Gender distribution across JobTitles is skewed, with more women in Marketing Associate and more men in Software Engineer & Manager.  
+We can also see that this distribution is similar across departments.
+
+As a result, the ANOVA model is affected due to the skewed distribution in the data and may be the reason for the lack of significance.
+
+# Hypothesis 3: Gender and Impact of Advanced Education on Pay - Logistic Regression
+
+```{r}
+# Calculating the median salary
+median_salary <- median(data$Salary, na.rm = TRUE)
+
+# Creating a binary variable for high salary
+data$HighSalary <- ifelse(data$Salary > median_salary, 1, 0)
+ 
+# Fitting the logistic regression model
+logistic_model <- glm(HighSalary ~ Education + Gender, data = data, family = "binomial")
+summary(logistic_model)
+
+```
+
+# Logistic Regression Model Interpretation
+
+The logistic regression corroborates the hypothesis that both advanced education and gender are significant predictors of earning a high salary, furthering the discourse on the value of education in career progression against the backdrop of enduring gender pay disparities. This analysis, therefore, not only reflects upon the strides made since the 19th Amendment and subsequent legislative efforts but also underlines the importance of ongoing strategic interventions to cultivate a workforce landscape where gender equality is realized in practice, not just in principle.
+
+```{r}
+# Stacked Bar Chart for High Salary by Education and Gender
+plot_education_sal <- ggplot(data, aes(x = Education, fill = factor(HighSalary))) +
+  geom_bar(position = "fill") +
+  facet_wrap(~Gender) +
+  scale_fill_manual(values = c("0" = gtblue, "1" = buzzgold),
+                    labels = c("0" = "Below Median", "1" = "Above Median")) +
+  labs(title = "Proportion of High Salary by Education Level, Separated by Gender",
+       x = "Education Level", y = "Proportion") +
+  theme_minimal()
+
+plot_education_sal
+
+ggsave(here("Visualizations", "Proportion of High Salary by Education Level, Separated by Gender.png"), plot_education_sal, dpi = 300)
+```
+
+# Hypothesis 4: Gender Pay Gap Variance Across Age Groups - Multiple Linear Regression
+
+```{r}
+# Converting Age into categorical age groups
+data$AgeGroup <- cut(data$Age, breaks = c(0, 25, 35, 45, 55, 65, 100), include.lowest = TRUE, right = FALSE)
+ 
+# Fitting the multiple linear regression model
+age_model <- lm(Salary ~ AgeGroup * Gender, data = data)
+summary(age_model)
+
+```
+
+# Age Group & Pay Gap MLR Model Interpretation
+
+The fourth hypothesis explored the variance in the gender pay gap across different age groups using a multiple linear regression model. This approach is ideal for examining the relationship between a continuous dependent variable (salary) and multiple independent variables, including categorical ones (age groups and gender). To facilitate this analysis, the continuous age variable was categorized into age groups, and an interaction term between age group and gender was included in the model to assess whether the salary disparities between genders varied across different ages. The results of the regression model indicated that salary does indeed increase with age, which is consistent across all age groups. However, the interaction terms between age groups and gender were not all statistically significant, suggesting that the salary increase with age is generally consistent for both genders, with some variability. A line plot was created to visualize the average salary across age groups by gender, which showed that average salaries tend to increase with age for both genders. However, the plot also revealed that male average salaries were consistently higher than those of females across all age groups.
+In summary, the multiple linear regression analysis supported the hypothesis that there is a gender pay gap and that this gap persists across different age groups. The findings highlight the importance of considering both age and gender when examining salary structures and add to the evidence of a persistent gender pay gap across the lifespan.
+
+
+```{r}
+
+# Line Plot for Average Salary Across Age Groups by Gender
+plot_age_group <- ggplot(data, aes(x = AgeGroup, y = Salary, group = Gender, color = Gender)) +
+  geom_line(stat = "summary", fun = "mean") +
+  scale_color_manual(values = c("Male" = gtblue, "Female" = buzzgold)) +
+  labs(title = "Average Salary Across Age Groups by Gender",
+       x = "Age Group", y = "Average Salary") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_age_group
+
+ggsave(here("Visualizations", "Average Salary Across Age Groups by Gender.png"), plot_age_group, dpi = 300)
+```
+

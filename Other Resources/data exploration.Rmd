@@ -1,0 +1,190 @@
+---
+title: "Exploratory Data Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r install, include=FALSE}
+# Install required packages
+packages = c('dplyr', 'ggplot2', 'tidyverse', 'outliers', 'here')
+
+# install packages if needed
+for (package in packages) {
+  if (!package %in% installed.packages()) {
+    install.packages(package)
+  }
+}
+```
+
+```{r load-libraries}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(outliers)
+library(here)
+```
+
+# Load the Data
+
+```{r}
+glassdoor_data <- read.csv(here("Data", "Glassdoor Gender Pay Gap.csv"), header = TRUE)
+```
+
+## View the First Few Rows
+
+```{r}
+head(glassdoor_data)
+```
+
+## Data Summary
+
+```{r}
+# view the data and dtypes
+str(glassdoor_data)
+summary(glassdoor_data)
+```
+
+## Missing Data
+
+```{r}
+any(is.na(glassdoor_data))
+```
+
+## Record Counts by Gender
+
+```{r}
+glassdoor_data %>%
+  group_by(Gender) %>%
+  summarise(count = n()) %>%
+  mutate(perc_total = count / sum(count) * 100)
+```
+
+## Record Counts by Education
+
+```{r}
+glassdoor_data %>%
+  group_by(Education) %>%
+  summarise(count = n()) %>%
+  mutate(perc_total = count / sum(count) * 100) 
+```
+
+## Record Counts by Department
+
+```{r}
+glassdoor_data %>%
+  group_by(Dept) %>%
+  summarise(count = n()) %>%
+  mutate(perc_total = count / sum(count) * 100) 
+```
+
+## Record Counts by Seniority
+
+```{r}
+glassdoor_data %>%
+  group_by(Seniority) %>%
+  summarise(count = n()) %>%
+  mutate(perc_total = count / sum(count) * 100) 
+```
+
+Record count/sample appears to be balanced when looking at the data based on: Edu, Dept, & Seniority. Gender is somewhat balanced with a slight majority of male records.
+
+## Find Outliers
+
+### AGE
+
+```{r}
+grubbs.test(glassdoor_data$Age)
+boxplot(glassdoor_data$Age)
+```
+
+p = 1  
+alternative hypothesis: highest value 65 is an outlier  
+no points beyond the "whiskers" of the box plot  
+
+```{r}
+grubbs.test(glassdoor_data$PerfEval)
+boxplot(glassdoor_data$PerfEval)
+```
+
+p = 1  
+alternative hypothesis: lowest value 1 is an outlier  
+no points beyond the "whiskers" of the box plot  
+
+```{r}
+grubbs.test(glassdoor_data$Seniority)
+boxplot(glassdoor_data$Seniority)
+```
+
+p = 1  
+alternative hypothesis: highest value 5 is an outlier  
+no points beyond the "whiskers" of the box plot  
+
+### BASEPAY
+
+```{r}
+grubbs.test(glassdoor_data$BasePay)
+boxplot(glassdoor_data$BasePay)
+outliers_basepay <- boxplot(glassdoor_data$BasePay)$out
+
+# Print the outlier values
+cat("Outlier values: ", outliers_basepay, "\n")
+```
+
+p = 0.3711  
+alternative hypothesis: highest value 179726 is an outlier  
+THERE ARE points beyond the "whiskers" of the box plot  
+to find the values:  
+Outlier values:  176789 165229 179726   
+
+### BONUS
+
+```{r}
+grubbs.test(glassdoor_data$Bonus)
+boxplot(glassdoor_data$Bonus)
+```
+
+p = 1  
+alternative hypothesis: highest value 11293 is an outlier  
+no points beyond the "whiskers" of the box plot  
+
+## Histogram for Age
+
+```{r}
+ggplot(glassdoor_data, aes(x = Age)) +
+  geom_histogram(binwidth = 1, fill = "red") +
+  labs(title = "Age Histogram", x = "Age")
+```
+
+## Box Plots for Base Pay
+
+```{r}
+glassdoor_data %>%
+  gather(variable, value, BasePay) %>%
+  ggplot(aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "BasePay Box Plot", x = "Base Pay Variable", 
+       y = "Amount Earned")
+```
+
+## Box Plots for Bonus
+
+```{r}
+glassdoor_data %>%
+  gather(variable, value, Bonus) %>%
+  ggplot(aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Bonus Box Plot", x = "Bonus Variable", 
+       y = "Amount Earned")
+```
+
+## Scatter Plot: Age vs. Base Pay
+
+```{r}
+ggplot(glassdoor_data, aes(x = Age, y = BasePay)) +
+  geom_point(color = "red") +
+  labs(title = "Age vs. BasePay", x = "Age", y = "Base Pay")
+```

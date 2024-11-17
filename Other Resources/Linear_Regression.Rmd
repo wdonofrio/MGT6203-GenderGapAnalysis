@@ -1,0 +1,180 @@
+---
+title: "Linear Regression Analysis"
+output: html_document
+date: "2023 Fall Semester"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(ggplot2)
+library(dplyr)
+library(here)
+library(car)
+library(MASS)
+```
+
+## Load Data without Outliers
+```{r data preparation}
+data_no_outlier <- read.csv(here("Data", "Glassdoor Gender Pay Gap w_o outliers.csv"))
+summary(data_no_outlier)
+
+# Combine BasePay & Bonus to Salary variable
+data_no_outlier$Salary <- data_no_outlier$BasePay + data_no_outlier$Bonus
+data_no_outlier <- subset(data_no_outlier, select = -c(BasePay, Bonus))
+```
+
+## Separate data for training & testing
+
+We will use 75% of the data for training and 25% for testing.
+
+```{r separate data}
+set.seed(123)
+training_indices <- sample(nrow(data_no_outlier), 0.75 * nrow(data_no_outlier))
+
+training_data <- data_no_outlier[training_indices, ]
+testing_data <- data_no_outlier[-training_indices, ]
+```
+
+## Check for Multicollinearity
+```{r}
+cor(training_data[, c("Age", "PerfEval", "Seniority", "Salary")])
+```
+
+Our results indicate a good positive correlation between Age & Salary, suggesting that older employees tend to have higher salaries.
+However, Seniority & PerfEval have a lower correlation with Salary, suggesting that these variables may not be good predictors of Salary.
+
+```{r}
+# Model all predictors against Salary
+model <- lm(Salary ~ ., data = training_data)
+summary(model)
+```
+Gender does not appear to be a statistically significant predictor.
+
+## Check VIF
+```{r}
+vif(model)
+```
+Despite some hgih GVIF values, this may not be an issue as GVIF^(1/(2*Df)) < 2.5 for all predictors.
+
+## Check Residuals
+```{r}
+predictor <- as.factor(training_data$Gender)
+
+plot(predictor, resid(model),
+    main = "Residual Plot",
+    xlab = "Gender",
+    ylab = "Residuals",
+    pch = 16, col = "blue")
+```
+
+There does not appear to be any noticable pattern in the residuals.
+
+## Isolate predictors of significance
+```{r}
+start_model <- lm(Salary ~ ., data = training_data)
+
+while(TRUE) {
+    model <- stepAIC(start_model, direction = "backward", trace = TRUE)
+
+    if (AIC(model) < AIC(start_model))
+        start_model <- model
+
+    break
+}
+summary(model)
+```
+As noted earlier, because Gender does not appear to be statistically significant, it was removed from the model using stepwise model selection.
+
+## Measure Performance
+Since we are working to identify potential Gender Pay Gap, we will recreate the model with all predictors.
+```{r}
+model <- lm(Salary ~ ., data = training_data)
+summary(model)
+
+predicted_salary <- predict(model, testing_data)
+plot(testing_data$Salary, predicted_salary,
+    main = "Actual vs. Predicted Salary",
+    xlab = "Actual Salary",
+    ylab = "Predicted Salary",
+    pch = 16, col = "blue")
+abline(a = 0, b = 1, col = "red")
+
+# Calculate RMSE
+sqrt(mean((testing_data$Salary - predicted_salary)^2))
+
+```
+
+RMSE indicates a moderate error rate of ~$10,500.
+In conclusion, while the model performs well, Gender does not appear to be a statistically significant predictor of Salary.
+
+# Linear Regression Analysis per Category
+## Department
+
+```{r}
+dept_model <- lm(Salary ~ Dept * Gender, data = training_data)
+summary(dept_model)
+```
+Per p-values, Gender does not play a significant role in Department Salaries.
+
+## JobTitle
+
+```{r}
+job_model <- lm(Salary ~ JobTitle * Gender, data = training_data)
+summary(job_model)
+```
+Marketing Associate (Male) appears to have a statistically significant impact on Salary.
+
+## Education
+```{r}
+education_model <- lm(Salary ~ Education * Gender, data = training_data)
+summary(education_model)
+```
+Per p-values, Gender does not play a significant role in Education Salaries.
+
+## Age
+```{r}
+age_model <- lm(Salary ~ Age * Gender, data = training_data)
+summary(age_model)
+```
+Per p-values, Gender does not play a significant role in Age Salaries.
+
+## Seniority
+```{r}
+seniority_model <- lm(Salary ~ Seniority * Gender, data = training_data)
+summary(seniority_model)
+```
+Per p-values, Gender does not play a significant role in Seniority Salaries.
+
+## PerfEval
+```{r}
+perfeval_model <- lm(Salary ~ PerfEval * Gender, data = training_data)
+summary(perfeval_model)
+```
+Per p-values, Gender does not play a significant role in PerfEval Salaries.
+
+## Deep-dive Job Title Marketing Associate
+```{r}
+marketing_model <- lm(Salary ~ Gender + Age, data = subset(training_data, JobTitle == "Marketing Associate"))
+summary(marketing_model)
+```
+There appears to be statistical significance regarding Gender + Age for Marketing Associates, however, the adjusted R2 value is low.
+The p-values may be due to our previous findings that Age is a good predictor of Salary.
+
+```{r}
+predicted_salary <- predict(marketing_model, subset(testing_data, JobTitle == "Marketing Associate"))
+plot(subset(testing_data, JobTitle == "Marketing Associate")$Salary, predicted_salary,
+    main = "Actual vs. Predicted Salary",
+    xlab = "Actual Salary",
+    ylab = "Predicted Salary",
+    pch = 16, col = "blue")
+
+abline(a = 0, b = 1, col = "red")
+
+# Calculate RMSE
+sqrt(mean((subset(testing_data, JobTitle == "Marketing Associate")$Salary - predicted_salary)^2))
+```
+RMSE indicates a moderate error rate of ~$20,000.
+In conclusion, even after diving deeper into JobTitles with potential Gender Pay Gap in Marketing Associates, the model performs poorly.
